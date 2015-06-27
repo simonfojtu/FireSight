@@ -12,6 +12,7 @@
 #include "jo_util.hpp"
 #include "MatUtil.hpp"
 #include "version.h"
+#include "Sharpness.h"
 
 using namespace cv;
 using namespace std;
@@ -78,6 +79,26 @@ bool Pipeline::apply_FireSight(json_t *pStage, json_t *pStageModel, Model &model
     json_object_set(pStageModel, "FireSight", pFireSight);
 
     return stageOK("apply_FireSight(%s) %s", errMsg, pStage, pStageModel);
+}
+
+bool Pipeline::apply_meanStdDev(json_t *pStage, json_t *pStageModel, Model &model) {
+    validateImage(model.image);
+    const char *errMsg = NULL;
+
+	Scalar mean;
+	Scalar stdDev;
+	meanStdDev(model.image, mean, stdDev);
+
+	json_t * jmean = json_array();
+    json_object_set(pStageModel, "mean", jmean);
+	json_t * jstddev = json_array();
+    json_object_set(pStageModel, "stdDev", jstddev);
+	for (int i = 0; i < 4; i++) {
+		json_array_append(jmean, json_real(mean[i]));
+		json_array_append(jstddev, json_real(stdDev[i]));
+	}
+
+    return stageOK("apply_meanStdDev(%s) %s", errMsg, pStage, pStageModel);
 }
 
 bool Pipeline::apply_minAreaRect(json_t *pStage, json_t *pStageModel, Model &model) {
@@ -960,6 +981,26 @@ bool Pipeline::apply_circle(json_t *pStage, json_t *pStageModel, Model &model) {
     return stageOK("apply_circle(%s) %s", errMsg.c_str(), pStage, pStageModel);
 }
 
+bool Pipeline::apply_sharpness(json_t *pStage, json_t *pStageModel, Model &model) {
+    const char *errMsg = NULL;
+    string methodStr = jo_string(pStage, "method", "GRAS", model.argMap);
+    
+    /* Apply selected method */
+    double sharpness = 0;
+    if (strcmp("GRAS", methodStr.c_str()) == 0) {
+        sharpness = Sharpness::GRAS(model.image);
+    } else if (strcmp("LAPE", methodStr.c_str()) == 0) {
+        sharpness = Sharpness::LAPE(model.image);
+    } else if (strcmp("LAPM", methodStr.c_str()) == 0) {
+        sharpness = Sharpness::LAPM(model.image);
+    }
+
+    json_object_set(pStageModel, "sharpness", json_real(sharpness));
+
+    return stageOK("apply_sharpness(%s) %s", errMsg, pStage, pStageModel);
+
+}
+
 bool Pipeline::apply_rectangle(json_t *pStage, json_t *pStageModel, Model &model) {
     int x = jo_int(pStage, "x", 0, model.argMap);
     int y = jo_int(pStage, "y", 0, model.argMap);
@@ -1708,6 +1749,8 @@ const char * Pipeline::dispatch(const char *pName, const char *pOp, json_t *pSta
         ok = apply_matchGrid(pStage, pStageModel, model);
     } else if (strcmp(pOp, "matchTemplate")==0) {
         ok = apply_matchTemplate(pStage, pStageModel, model);
+    } else if (strcmp(pOp, "meanStdDev")==0) {
+        ok = apply_meanStdDev(pStage, pStageModel, model);
     } else if (strcmp(pOp, "minAreaRect")==0) {
         ok = apply_minAreaRect(pStage, pStageModel, model);
     } else if (strcmp(pOp, "model")==0) {
@@ -1732,6 +1775,8 @@ const char * Pipeline::dispatch(const char *pName, const char *pOp, json_t *pSta
         ok = apply_rectangle(pStage, pStageModel, model);
     } else if (strcmp(pOp, "resize")==0) {
         ok = apply_resize(pStage, pStageModel, model);
+    } else if (strcmp(pOp, "sharpness")==0) {
+        ok = apply_sharpness(pStage, pStageModel, model);
     } else if (strcmp(pOp, "SimpleBlobDetector")==0) {
         ok = apply_SimpleBlobDetector(pStage, pStageModel, model);
     } else if (strcmp(pOp, "split")==0) {

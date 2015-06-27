@@ -4,8 +4,9 @@ project( firesight )
 
 SET(PROJECT_VERSION_MAJOR 0)
 SET(PROJECT_VERSION_MINOR 14)
-set(PROJECT_VERSION_PATCH 6)
+set(PROJECT_VERSION_PATCH 9)
 set(PROJECT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH})
+
 
 OPTION(BUILD_LGPL2_1 "Build modules with LGPL2.1 license" OFF)
 
@@ -95,6 +96,10 @@ set(FIRESIGHT_LIB_FILES
   MatUtil.cpp
   Model.cpp 
   Pipeline.cpp 
+  Pt2Res_RANSAC.cpp
+  proto.cpp 
+  Sharpness.cpp
+  warpRing.cpp
   )
 
 # conditinally included sources with LGPL 2.1 license
