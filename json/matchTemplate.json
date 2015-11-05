@@ -5,7 +5,8 @@
 		"corr":"{{corr}}",
 		"threshold":"{{threshold}}",
 		"method":"{{method}}",
-		"angle":"{{angle }}",
+		"angle":"{{angle}}",
+		"angles":"{{angles}}",
 		"output":"{{output}}"
 	},
 	{"op":"drawRects", "model":"match", "color":[32,255,32]}
