@@ -377,7 +377,7 @@ protected:
                 LOGTRACE("apply_matchTemplate() clone input");
                 model.image = model.imageMap["input"].clone();
             } else if (output == TEMPLATE) {
-                resize(warpedTmplt, warpedTmplt, model.image.size(), 0, 0, INTER_LINEAR);
+                resize(warpedTmplt, warpedTmplt, model.image.size(), 0, 0, INTER_NEAREST);
                 warpedTmplt.convertTo(model.image, CV_8U);
             }
         }
