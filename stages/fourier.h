@@ -219,6 +219,7 @@ protected:
 };
 
 class TemplateMatch : public Stage {
+protected:
     enum Output {
         CURRENT,
         INPUT,
@@ -431,6 +432,122 @@ protected:
     int output;
     map<int, string> mapOutput;
     vector<float> angles;
+    float min_scale;
+    float max_scale;
+    float step_scale;
+};
+
+class TemplateDetect : public TemplateMatch {
+
+public:
+    TemplateDetect(json_t *pStage, Model &model, string pName) : TemplateMatch(pStage, model, pName) {
+
+        method = CV_TM_CCOEFF;   // default
+        min_scale = 0.5;
+        max_scale = 2;
+        step_scale = 0.1;
+        _params["min_scale"] = new FloatParameter(this, min_scale, 0.5, 2, 0.1);
+        _params["max_scale"] = new FloatParameter(this, max_scale, 0.5, 2, 0.1);
+        _params["step_scale"] = new FloatParameter(this, step_scale, 0.05, 1, 0.05);
+    }
+
+protected:
+    bool apply_internal(json_t *pStageModel, Model &model) {
+        validateImage(model.image);
+        const char *errMsg = NULL;
+
+        Mat tmplt;
+
+        if (model.image.channels() == 1) {
+            tmplt = imread(tmpltPath.c_str(), CV_LOAD_IMAGE_GRAYSCALE);
+        } else {
+            tmplt = imread(tmpltPath.c_str(), CV_LOAD_IMAGE_COLOR);
+        }
+        if (tmplt.data) {
+            LOGTRACE2("apply_detectTemplate(%s) %s", tmpltPath.c_str(), matInfo(tmplt).c_str());
+            if (model.image.rows<tmplt.rows || model.image.cols<tmplt.cols) {
+                errMsg = "Expected template smaller than image to detect";
+            }
+        } else {
+            errMsg = "Failed to read template";
+        }
+
+        if (!errMsg) {
+            json_t *pRects = json_array();
+            assert(pRects);
+            float maxVal = -FLT_MAX;
+            size_t nmatches = 0;
+            for (float& a : angles) {
+                Mat result;
+                Mat imageSource = output == CURRENT ? model.image.clone() : model.image;
+
+                Mat warpedTmplt;
+                if (!errMsg) {
+                    matWarpRing(tmplt, warpedTmplt, vector<float>({a}));
+                }
+
+   
+                matchTemplate(imageSource, warpedTmplt, result, method);
+                LOGTRACE4("apply_detectTemplate() matchTemplate(%s,%s,%s,%d)",
+                          matInfo(imageSource).c_str(), matInfo(warpedTmplt).c_str(), matInfo(result).c_str(), method);
+   
+                vector<Point> matches;
+                maxVal = max(maxVal, *max_element(result.begin<float>(),result.end<float>()));
+                bool isMin = method == CV_TM_SQDIFF || method == CV_TM_SQDIFF_NORMED;
+                if (isMin) {
+                    float rangeMin = 0;
+                    float rangeMax = corr * maxVal;
+                    matMinima(result, matches, rangeMin, rangeMax);
+                } else {
+                    float rangeMin = max(threshold, corr * maxVal);
+                    float rangeMax = maxVal;
+                    matMaxima(result, matches, rangeMin, rangeMax);
+                }
+   
+                int xOffset = output == CORR ? 0 : warpedTmplt.cols/2;
+                int yOffset = output == CORR ? 0 : warpedTmplt.rows/2;
+  //              modelMatches(Point(xOffset, yOffset), tmplt, result, angles, matches, pStageModel, maxVal, isMin);
+
+                for (size_t iMatch=0; iMatch<matches.size(); iMatch++) {
+                    int cx = matches[iMatch].x;
+                    int cy = matches[iMatch].y;
+                    LOGTRACE2("modelMatches() matches(%d,%d)", cx, cy);
+                    float val = result.at<float>(cy,cx);
+                    json_t *pRect = json_object();
+                    assert(pRect);
+                    json_object_set(pRect, "x", json_real(cx+xOffset));
+                    json_object_set(pRect, "y", json_real(cy+yOffset));
+                    json_object_set(pRect, "width", json_real(tmplt.cols));
+                    json_object_set(pRect, "height", json_real(tmplt.rows));
+                    json_object_set(pRect, "angle", json_real(-a));
+                    json_object_set(pRect, "corr", json_float(val/maxVal));
+                    json_array_append(pRects, pRect);
+                }
+                nmatches += matches.size();
+   
+                if (output == CORR) {
+                    LOGTRACE("apply_detectTemplate() normalize()");
+                    normalize(result, result, 0, 255, NORM_MINMAX);
+                    result.convertTo(model.image, CV_8U);
+                } else if (output == INPUT) {
+                    LOGTRACE("apply_detectTemplate() clone input");
+                    model.image = model.imageMap["input"].clone();
+                } else if (output == TEMPLATE) {
+                    resize(warpedTmplt, warpedTmplt, model.image.size(), 0, 0, INTER_NEAREST);
+                    warpedTmplt.convertTo(model.image, CV_8U);
+                }
+            }
+
+            json_object_set(pStageModel, "rects", pRects);
+            json_object_set(pStageModel, "maxVal", json_float(maxVal));
+            json_object_set(pStageModel, "matches", json_integer(nmatches));
+        }
+
+        return stageOK("apply_detectTemplate(%s) %s", errMsg, pStage, pStageModel);
+    }
+
+
+
     float min_scale;
     float max_scale;
     float step_scale;

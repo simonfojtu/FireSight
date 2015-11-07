@@ -434,6 +434,8 @@ std::unique_ptr<Stage> StageFactory::getStage(const char *pOp, json_t *pStage, M
         stage = unique_ptr<Stage>(new Canny(pStage, model, pName));
     if (strcmp(pOp, "cvtColor")==0)
         stage = unique_ptr<Stage>(new CvtColor(pStage, model, pName));
+    if (strcmp(pOp, "detectTemplate")==0)
+        stage = unique_ptr<Stage>(new TemplateDetect(pStage, model, pName));
     if (strcmp(pOp, "dft")==0)
         stage = unique_ptr<Stage>(new DFT(pStage, model, pName));
     if (strcmp(pOp, "dftSpectrum")==0)
