@@ -1,0 +1,18 @@
+[
+	{"op":"detectTemplate",
+		"name":"match",
+		"template":"{{template}}",
+		"corr":"{{corr}}",
+		"threshold":"{{threshold}}",
+		"method":"{{method}}",
+		"angle":"{{angle}}",
+		"angles":"{{angles}}",
+        "min_scale":"{{min_scale}}",
+        "max_scale":"{{max_scale}}",
+        "step_scale":"{{step_scale}}",
+		"output":"{{output}}"
+	},
+    {"op":"nms", "model":"match", "name":"nms_out"},
+	{"op":"drawRects", "model":"match", "color":[32,255,32]},
+	{"op":"drawRects", "model":"nms_out", "color":[255,32,32]}
+]
