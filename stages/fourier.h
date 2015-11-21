@@ -638,8 +638,8 @@ protected:
                 int width = jo_int(pRect, "width", -1, model.argMap);
                 int height = jo_int(pRect, "height", -1, model.argMap);
                 float angle = jo_float(pRect, "angle", FLT_MAX, model.argMap);
-                float corr = jo_float(pRect, "corr", NAN, model.argMap);
-                drects_in.push_back(DRect(x, y, width, height, angle, corr));
+                float score = jo_float(pRect, "score", NAN, model.argMap);
+                drects_in.push_back(DRect(x, y, width, height, angle, score));
             }
 
             vector<DRect> drects_out;
@@ -688,7 +688,7 @@ protected:
                 json_object_set(pRect, "width", json_real(rout.w));
                 json_object_set(pRect, "height", json_real(rout.h));
                 json_object_set(pRect, "angle", json_real(rout.r));
-                json_object_set(pRect, "corr", json_float(rout.score));
+                json_object_set(pRect, "score", json_float(rout.score));
                 json_array_append(outRects, pRect);
             }
             json_object_set(pStageModel, "rects", outRects);
