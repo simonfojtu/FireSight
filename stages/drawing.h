@@ -147,6 +147,7 @@ private:
                 int width = jo_int(pRect, "width", -1, model.argMap);
                 int height = jo_int(pRect, "height", -1, model.argMap);
                 float angle = jo_float(pRect, "angle", FLT_MAX, model.argMap);
+                float score = jo_float(pRect, "score", NAN, model.argMap);
                 Scalar rectColor = color;
                 if (changeColor) {
                     red = (index & 1) ? 0 : 255;
@@ -160,6 +161,9 @@ private:
                     break;
                 }
                 if (rectColor[3] != 0) {	// alpha=0 implies non-display
+                    if (!isnan(score)) {
+                        putText(model.image, format("%f", score), Point(x, y), CV_FONT_HERSHEY_SIMPLEX, 0.5, Scalar(255, 255, 255));
+                    }
                     if (angle == FLT_MAX || radius > 0) {
                         int r;
                         if (radius > 0) {
