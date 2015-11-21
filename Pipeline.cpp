@@ -243,35 +243,40 @@ bool Pipeline::processModelGUI(Input * input, Model &model) {
                 break;
             case 65364: // down
             case 'n':
-                sel_param = min((int) stages[sel_stage-1]->getParams().size()-1, sel_param+1);
+                if (sel_stage != -1)
+                    sel_param = min((int) stages[sel_stage-1]->getParams().size()-1, sel_param+1);
                 break;
             case 65361: // left
             case '-':
             {
-                map<string, Parameter*> params = stages[sel_stage-1]->getParams();
-                int idx = 0;
-                for (auto it : params) {
-                    if (idx == sel_param) {
-                        it.second->dec();
-                        rerunPipeline = true;
-                        break;
+                if (sel_stage != -1) {
+                    map<string, Parameter*> params = stages[sel_stage-1]->getParams();
+                    int idx = 0;
+                    for (auto it : params) {
+                        if (idx == sel_param) {
+                            it.second->dec();
+                            rerunPipeline = true;
+                            break;
+                        }
+                        idx++;
                     }
-                    idx++;
                 }
             }
                 break;
             case 65363: // right
             case '+':
             {
-                map<string, Parameter*> params = stages[sel_stage-1]->getParams();
-                int idx = 0;
-                for (auto it : params) {
-                    if (idx == sel_param) {
-                        it.second->inc();
-                        rerunPipeline = true;
-                        break;
+                if (sel_stage != -1) {
+                    map<string, Parameter*> params = stages[sel_stage-1]->getParams();
+                    int idx = 0;
+                    for (auto it : params) {
+                        if (idx == sel_param) {
+                            it.second->inc();
+                            rerunPipeline = true;
+                            break;
+                        }
+                        idx++;
                     }
-                    idx++;
                 }
             }
                 break;
