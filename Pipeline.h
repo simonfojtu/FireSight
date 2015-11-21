@@ -111,13 +111,25 @@ namespace firesight {
     class IntParameter : public Parameter {
     public:
         IntParameter(Stage * stage, int& value) :
-            Parameter(stage), value(value)
+            Parameter(stage), value(value),
+            step(1),
+            end(INT_MAX),
+            start(-INT_MAX)
+        {}
+        IntParameter(Stage * stage, int& value, int start, int end, int step) :
+            Parameter(stage), value(value),
+            start(start),
+            end(end),
+            step(step)
         {}
         string toString() const { return std::to_string(value); }
-        void inc() { value++; }
-        void dec() { value--; }
+        void inc() { value+=step; }
+        void dec() { value-=step; }
     private:
         int& value;
+        int step;
+        int start;
+        int end;
     };
 
     class SizeTParameter : public Parameter {
