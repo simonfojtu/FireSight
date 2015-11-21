@@ -408,7 +408,7 @@ protected:
             } else {
                 LOGTRACE1("Omitting angles (size:%d)", (int) angles.size());
             }
-            json_object_set(pRect, "corr", json_float(val/maxVal));
+            json_object_set(pRect, "score", json_float(val/maxVal));
             json_array_append(pRects, pRect);
         }
         json_object_set(pStageModel, "rects", pRects);
@@ -442,12 +442,12 @@ class TemplateDetect : public TemplateMatch {
 public:
     TemplateDetect(json_t *pStage, Model &model, string pName) : TemplateMatch(pStage, model, pName) {
 
-        method = CV_TM_CCOEFF;   // default
-        min_scale = 0.5;
-        max_scale = 2;
-        step_scale = 0.1;
+        method = CV_TM_CCOEFF_NORMED;   // default
+        min_scale = jo_float(pStage, "min_scale", 0.5, model.argMap);
         _params["min_scale"] = new FloatParameter(this, min_scale, 0.5, 2, 0.1);
+        max_scale = jo_float(pStage, "max_scale", 2.0, model.argMap);
         _params["max_scale"] = new FloatParameter(this, max_scale, 0.5, 2, 0.1);
+        step_scale = jo_float(pStage, "step_scale", 0.5, model.argMap);
         _params["step_scale"] = new FloatParameter(this, step_scale, 0.05, 1, 0.05);
     }
 
@@ -477,64 +477,74 @@ protected:
             assert(pRects);
             float maxVal = -FLT_MAX;
             size_t nmatches = 0;
-            for (float& a : angles) {
-                Mat result;
-                Mat imageSource = output == CURRENT ? model.image.clone() : model.image;
-
-                Mat warpedTmplt;
-                if (!errMsg) {
-                    matWarpRing(tmplt, warpedTmplt, vector<float>({a}));
-                }
-
+            for (float scale = min_scale; scale < max_scale; scale += step_scale) {
+                for (float& a : angles) {
+                    Mat result;
+                    Mat imageSource = output == CURRENT ? model.image.clone() : model.image;
    
-                matchTemplate(imageSource, warpedTmplt, result, method);
-                LOGTRACE4("apply_detectTemplate() matchTemplate(%s,%s,%s,%d)",
-                          matInfo(imageSource).c_str(), matInfo(warpedTmplt).c_str(), matInfo(result).c_str(), method);
+                    Mat warpedTmplt;
+                    if (!errMsg) {
+                        matWarpRing(tmplt, warpedTmplt, vector<float>({a}));
+                        Mat resized;
+                        cv::resize(warpedTmplt, resized, Size(), scale, scale, CV_INTER_CUBIC);
+                        warpedTmplt = resized;
+                    }
    
-                vector<Point> matches;
-                maxVal = max(maxVal, *max_element(result.begin<float>(),result.end<float>()));
-                bool isMin = method == CV_TM_SQDIFF || method == CV_TM_SQDIFF_NORMED;
-                if (isMin) {
-                    float rangeMin = 0;
-                    float rangeMax = corr * maxVal;
-                    matMinima(result, matches, rangeMin, rangeMax);
-                } else {
-                    float rangeMin = max(threshold, corr * maxVal);
-                    float rangeMax = maxVal;
-                    matMaxima(result, matches, rangeMin, rangeMax);
-                }
+      
+                    matchTemplate(imageSource, warpedTmplt, result, method);
+                    LOGTRACE4("apply_detectTemplate() matchTemplate(%s,%s,%s,%d)",
+                              matInfo(imageSource).c_str(), matInfo(warpedTmplt).c_str(), matInfo(result).c_str(), method);
+      
+                    vector<Point> matches;
+                    maxVal = max(maxVal, *max_element(result.begin<float>(),result.end<float>()));
+                    bool isMin = method == CV_TM_SQDIFF || method == CV_TM_SQDIFF_NORMED;
+                    if (isMin) {
+                        float rangeMin = 0;
+                        float rangeMax = corr * maxVal;
+                        matMinima(result, matches, rangeMin, rangeMax);
+                    } else {
+                        float rangeMin = max(threshold, corr * maxVal);
+                        float rangeMax = maxVal;
+                        matMaxima(result, matches, rangeMin, rangeMax);
+                    }
+      
+                    int xOffset = output == CORR ? 0 : warpedTmplt.cols/2;
+                    int yOffset = output == CORR ? 0 : warpedTmplt.rows/2;
+     //               modelMatches(Point(xOffset, yOffset), tmplt, result, angles, matches, pStageModel, maxVal, isMin);
    
-                int xOffset = output == CORR ? 0 : warpedTmplt.cols/2;
-                int yOffset = output == CORR ? 0 : warpedTmplt.rows/2;
-  //              modelMatches(Point(xOffset, yOffset), tmplt, result, angles, matches, pStageModel, maxVal, isMin);
-
-                for (size_t iMatch=0; iMatch<matches.size(); iMatch++) {
-                    int cx = matches[iMatch].x;
-                    int cy = matches[iMatch].y;
-                    LOGTRACE2("modelMatches() matches(%d,%d)", cx, cy);
-                    float val = result.at<float>(cy,cx);
-                    json_t *pRect = json_object();
-                    assert(pRect);
-                    json_object_set(pRect, "x", json_real(cx+xOffset));
-                    json_object_set(pRect, "y", json_real(cy+yOffset));
-                    json_object_set(pRect, "width", json_real(tmplt.cols));
-                    json_object_set(pRect, "height", json_real(tmplt.rows));
-                    json_object_set(pRect, "angle", json_real(-a));
-                    json_object_set(pRect, "corr", json_float(val/maxVal));
-                    json_array_append(pRects, pRect);
-                }
-                nmatches += matches.size();
-   
-                if (output == CORR) {
-                    LOGTRACE("apply_detectTemplate() normalize()");
-                    normalize(result, result, 0, 255, NORM_MINMAX);
-                    result.convertTo(model.image, CV_8U);
-                } else if (output == INPUT) {
-                    LOGTRACE("apply_detectTemplate() clone input");
-                    model.image = model.imageMap["input"].clone();
-                } else if (output == TEMPLATE) {
-                    resize(warpedTmplt, warpedTmplt, model.image.size(), 0, 0, INTER_NEAREST);
-                    warpedTmplt.convertTo(model.image, CV_8U);
+                    for (size_t iMatch=0; iMatch<matches.size(); iMatch++) {
+                        int cx = matches[iMatch].x;
+                        int cy = matches[iMatch].y;
+                        LOGTRACE2("modelMatches() matches(%d,%d)", cx, cy);
+                        float val = result.at<float>(cy,cx);
+                        json_t *pRect = json_object();
+                        assert(pRect);
+                        json_object_set(pRect, "x", json_real(cx+xOffset));
+                        json_object_set(pRect, "y", json_real(cy+yOffset));
+                        json_object_set(pRect, "width", json_real(tmplt.cols));
+                        json_object_set(pRect, "height", json_real(tmplt.rows));
+                        json_object_set(pRect, "angle", json_real(-a));
+                        json_object_set(pRect, "score", json_float(val/maxVal));
+                        json_array_append(pRects, pRect);
+                    }
+                    nmatches += matches.size();
+      
+                    if (output == CORR) {
+                        LOGTRACE("apply_detectTemplate() normalize()");
+                        normalize(result, result, 0, 255, NORM_MINMAX);
+                        result.convertTo(model.image, CV_8U);
+                    } else if (output == INPUT) {
+                        LOGTRACE("apply_detectTemplate() clone input");
+                        model.image = model.imageMap["input"].clone();
+                    } else if (output == TEMPLATE) {
+                        Mat tmp = tmplt;
+                        float scale = min((float) model.image.cols / tmp.cols, (float) model.image.rows / tmp.rows);
+                        resize(tmp, tmp, Size(), scale, scale, INTER_NEAREST);
+                        Rect rec = Rect((model.image.cols - tmp.cols) / 2, (model.image.rows - tmp.rows) / 2, tmp.cols, tmp.rows);
+                        tmp.convertTo(tmp, CV_8U);
+                        model.image = Scalar::all(0);
+                        tmp.copyTo(model.image(rec));
+                    }
                 }
             }
 
@@ -551,6 +561,145 @@ protected:
     float min_scale;
     float max_scale;
     float step_scale;
+};
+
+struct DRect {
+    float x, y, w, h, r;
+    float score;
+    DRect() : x(NAN), y(NAN), w(NAN), h(NAN), r(NAN), score(NAN) {}
+    DRect(float x, float y, float w, float h, float r, float score) : x(x), y(y), w(w), h(h), r(r), score(score) {}
+
+};
+
+//! Computer ratio of overlap w.r.t. smaller rectangle
+//! Rotation is not considered! -> TODO
+float overlap(const DRect&a, const DRect& b) {
+    if ((a.x+a.w < b.x) || (b.x+b.w < a.x) || (a.y+a.h < b.y) || (b.y+b.h < a.y)) {
+        return 0;
+    }
+    float w_ =  min(a.x+a.w, b.x+b.w) - max(a.x, b.x);
+    float h_ =  min(a.y+a.h, b.y+b.h) - max(a.y, b.y);
+
+    float intersect = max(0.0f, w_) * max(0.0f, h_);
+    float join = min(a.w*a.h, b.w*b.h); // ala KZ
+
+    return intersect / join;
+}
+
+bool operator<(const DRect& a, const DRect& b) {
+    return a.score < b.score;
+}
+
+class NonMaximaSuppression : public Stage {
+
+public:
+    NonMaximaSuppression(json_t *pStage, Model &model, string pName) : Stage(pStage, pName) {
+
+        min_cluster_size = jo_int(pStage, "min_cluster_size", 2, model.argMap);
+        _params["min_cluster_size"] = new IntParameter(this, min_cluster_size, 2, 1000, 1);
+        min_overlap = jo_float(pStage, "min_overlap", 0.5, model.argMap);
+        _params["min_overlap"] = new FloatParameter(this, min_overlap, 0.0, 1, 0.1);
+        rectsModelName = jo_string(pStage, "model", "", model.argMap);
+        _params["model"] = new StringParameter(this, rectsModelName);
+    }
+
+protected:
+    bool apply_internal(json_t *pStageModel, Model &model) {
+        json_t *pRectsModel = json_object_get(model.getJson(false), rectsModelName.c_str());
+        const char *errMsg = NULL;
+
+        if (rectsModelName.empty()) {
+            errMsg = "model: expected name of stage with rects";
+        } else if (!json_is_object(pRectsModel)) {
+            cout << "stage name:" << rectsModelName << endl;
+            errMsg = "Named stage is not in model";
+        }
+
+        json_t *pRects = NULL;
+        if (!errMsg) {
+            pRects = json_object_get(pRectsModel, "rects");
+            if (!json_is_array(pRects)) {
+                errMsg = "Expected array of rects";
+            }
+        }
+
+        json_t *outRects = json_array();
+        assert(outRects);
+
+        if (!errMsg) {
+            size_t index;
+            json_t *pRect;
+            Point2f vertices[4];
+            vector<DRect> drects_in;
+
+            json_array_foreach(pRects, index, pRect) {
+                int x = jo_int(pRect, "x", SHRT_MAX, model.argMap);
+                int y = jo_int(pRect, "y", SHRT_MAX, model.argMap);
+                int width = jo_int(pRect, "width", -1, model.argMap);
+                int height = jo_int(pRect, "height", -1, model.argMap);
+                float angle = jo_float(pRect, "angle", FLT_MAX, model.argMap);
+                float corr = jo_float(pRect, "corr", NAN, model.argMap);
+                drects_in.push_back(DRect(x, y, width, height, angle, corr));
+            }
+
+            vector<DRect> drects_out;
+            vector<int> drects_count;
+            for (const DRect& rin : drects_in) {
+                bool added = false;
+                for (size_t i = 0; i < drects_out.size(); i++) {
+                    DRect& rout = drects_out[i];
+                    if (overlap(rin, rout) > min_overlap) {
+                        // compute weighted mean of rout and rin
+                        const int c = drects_count[i];
+                        rout.x = (rout.x * c + rin.x)/(c+1);
+                        rout.y = (rout.y * c + rin.y)/(c+1);
+                        rout.w = (rout.w * c + rin.w)/(c+1);
+                        rout.h = (rout.h * c + rin.h)/(c+1);
+                        float coss = cos(rout.r/180*PI) * c + cos(rin.r/180*PI);
+                        float sins = sin(rout.r/180*PI) * c + sin(rin.r/180*PI);
+                        rout.r = atan2(sins/(c+1), coss/(c+1)) * 180 / PI;
+                        rout.score = (rout.score * c + rin.score) / (c+1);
+
+                        added = true;
+                        drects_count[i]++;
+                    }
+                }
+                if (!added) {
+                    drects_out.push_back(rin);
+                    drects_count.push_back(1);
+                }
+            }
+
+            // filter out rectangles w.r.t. min_cluster_size
+            for (size_t i = 0; i < drects_out.size();) {
+                if (drects_count[i] < min_cluster_size) {
+                    drects_count.erase(drects_count.begin() + i);
+                    drects_out.erase(drects_out.begin() + i);
+                } else {
+                    i++;
+                }
+            }
+
+            for (const DRect& rout : drects_out) {
+                json_t *pRect = json_object();
+                assert(pRect);
+                json_object_set(pRect, "x", json_real(rout.x));
+                json_object_set(pRect, "y", json_real(rout.y));
+                json_object_set(pRect, "width", json_real(rout.w));
+                json_object_set(pRect, "height", json_real(rout.h));
+                json_object_set(pRect, "angle", json_real(rout.r));
+                json_object_set(pRect, "corr", json_float(rout.score));
+                json_array_append(outRects, pRect);
+            }
+            json_object_set(pStageModel, "rects", outRects);
+            json_object_set(pStageModel, "matches", json_integer((int) drects_out.size()));
+        }
+        return stageOK("apply_nonMaximaSuppression(%s) %s", errMsg, pStage, pStageModel);
+    }
+
+    int min_cluster_size;
+    float min_overlap;
+    string rectsModelName;
 };
 
 class CalcOffset : public Stage {
